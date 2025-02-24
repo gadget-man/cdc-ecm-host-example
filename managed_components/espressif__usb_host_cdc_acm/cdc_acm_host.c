@@ -598,6 +598,8 @@ static esp_err_t cdc_acm_transfers_allocate(cdc_dev_t *cdc_dev, const usb_ep_des
     // 3. Setup IN data transfer (if it is required (in_buf_len > 0))
     if (in_buf_len != 0)
     {
+        ESP_LOGI(TAG, "Allocating IN transfer with buffer size: %d", in_buf_len);
+
         ESP_GOTO_ON_ERROR(
             usb_host_transfer_alloc(in_buf_len, 0, &cdc_dev->data.in_xfer),
             err, TAG, );
@@ -614,6 +616,7 @@ static esp_err_t cdc_acm_transfers_allocate(cdc_dev_t *cdc_dev, const usb_ep_des
     // 4. Setup OUT bulk transfer (if it is required (out_buf_len > 0))
     if (out_buf_len != 0)
     {
+        ESP_LOGI(TAG, "Allocating OUT transfer with buffer size: %d", out_buf_len);
         ESP_GOTO_ON_ERROR(
             usb_host_transfer_alloc(out_buf_len, 0, &cdc_dev->data.out_xfer),
             err, TAG, );
@@ -679,12 +682,12 @@ esp_err_t cdc_acm_host_open(uint16_t vid, uint16_t pid, uint8_t interface_idx, c
     ESP_LOGI(TAG, "CDC-ACM device opened: VID: 0x%04X, PID: 0x%04X, Notification Endpoint: 0x%02X, IN Endpoint: 0x%02X, OUT Endpoint: 0x%02X",
              device_desc->idVendor, device_desc->idProduct, cdc_info.notif_ep->bEndpointAddress, cdc_info.in_ep->bEndpointAddress, cdc_info.out_ep->bEndpointAddress);
 
-    cdc_info.notif_ep = NULL; // We don't need these anymore
+    // cdc_info.notif_ep = NULL; // We don't need these anymore
 
     // Allocate USB transfers, claim CDC interfaces and return CDC-ACM handle
     ESP_GOTO_ON_ERROR(
         cdc_acm_transfers_allocate(cdc_dev, cdc_info.notif_ep, cdc_info.in_ep, in_buf_size, cdc_info.out_ep, dev_config->out_buffer_size),
-        err, TAG, );
+        err, TAG, ); // TODO: update buffers based on device configuration values.
     ESP_GOTO_ON_ERROR(cdc_acm_start(cdc_dev, dev_config->event_cb, dev_config->data_cb, dev_config->user_arg), err, TAG, );
     *cdc_hdl_ret = (cdc_acm_dev_hdl_t)cdc_dev;
     xSemaphoreGive(p_cdc_acm_obj->open_close_mutex);
@@ -908,9 +911,16 @@ static void notif_xfer_cb(usb_transfer_t *transfer)
         }
         case USB_CDC_NOTIF_RESPONSE_AVAILABLE: // Encapsulated commands not implemented - fallthrough
         default:
-            if (notif->bNotificationCode == 0x10)
+            if (notif->bNotificationCode == 0x2A)
             {
-                ESP_LOGI(TAG, "Ethernet event not implemented");
+                cdc_dev->serial_state.val = *((uint16_t *)notif->Data);
+                if (cdc_dev->notif.cb)
+                {
+                    const cdc_acm_host_dev_event_data_t serial_state_event = {
+                        .type = CDC_ACM_HOST_SERIAL_STATE,
+                        .data.serial_state = cdc_dev->serial_state};
+                    cdc_dev->notif.cb(&serial_state_event, cdc_dev->cb_arg);
+                }
                 break;
             }
             else
@@ -1001,7 +1011,7 @@ esp_err_t cdc_acm_host_data_tx_blocking(cdc_acm_dev_hdl_t cdc_hdl, const uint8_t
         return ESP_ERR_TIMEOUT;
     }
 
-    ESP_LOGD(TAG, "Submitting BULK OUT transfer");
+    ESP_LOGI(TAG, "Submitting BULK OUT transfer");
     SemaphoreHandle_t transfer_finished_semaphore = (SemaphoreHandle_t)cdc_dev->data.out_xfer->context;
     xSemaphoreTake(transfer_finished_semaphore, 0); // Make sure the semaphore is taken before we submit new transfer
 

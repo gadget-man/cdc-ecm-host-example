@@ -29,6 +29,7 @@
 #define EXAMPLE_USB_HOST_PRIORITY (20)
 #define EXAMPLE_USB_DEVICE_VID (0x0BDA)
 #define EXAMPLE_USB_DEVICE_PID (0x8152)
+#define EXAMPLE_USB_DEVICE_PID_2 (0x8153)
 #define EXAMPLE_TX_STRING "Hello, World!"
 #define EXAMPLE_TX_TIMEOUT_MS (1000)
 
@@ -79,6 +80,8 @@ static void handle_event(const cdc_acm_host_dev_event_data_t *event, void *user_
         ESP_LOGI(TAG, "Serial state notif 0x%04X", event->data.serial_state.val);
         break;
     case CDC_ACM_HOST_NETWORK_CONNECTION:
+        ESP_LOGI(TAG, "Serial state notif 0x%04X", event->data.serial_state.val);
+        break;
     default:
         ESP_LOGW(TAG, "Unsupported CDC event: %i", event->type);
         break;
@@ -174,22 +177,32 @@ static esp_err_t netif_transmit(void *h, void *buffer, size_t len)
     ESP_LOGI(TAG, "Called netif_transmit with length %d", len);
 
     cdc_acm_dev_hdl_t cdc_dev = (cdc_acm_dev_hdl_t)h;
+    size_t out_buf_len = 64;
 
-    // if (cdc_dev == NULL)
-    // {
-    //     ESP_LOGE(TAG, "CDC device handle is NULL!");
-    //     return ESP_FAIL;
-    // }
-    // else
-    // {
-    //     ESP_LOGI(TAG, "CDC device handle is %p", cdc_dev);
-    // }
-
-    // ESP_LOGI(TAG, "Buffer: %s", (char *)buffer);
-    if (cdc_acm_host_data_tx_blocking(cdc_dev, (const uint8_t *)buffer, len, 2000) != ESP_OK)
+    if (cdc_dev == NULL)
     {
-        ESP_LOGE(TAG, "Failed to send buffer to USB!");
+        ESP_LOGE(TAG, "CDC device handle is NULL!");
+        return ESP_FAIL;
     }
+
+    const uint8_t *data_ptr = (const uint8_t *)buffer;
+    size_t remaining_len = len;
+
+    while (remaining_len > 0)
+    {
+        size_t chunk_len = remaining_len > out_buf_len ? out_buf_len : remaining_len;
+        ESP_LOGI(TAG, "Sending chunk of length %d", chunk_len);
+
+        if (cdc_acm_host_data_tx_blocking(cdc_dev, data_ptr, chunk_len, 2000) != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to send buffer to USB!");
+            return ESP_FAIL;
+        }
+
+        data_ptr += chunk_len;
+        remaining_len -= chunk_len;
+    }
+
     return ESP_OK;
 }
 
@@ -282,6 +295,28 @@ esp_err_t usb_ncm_init(cdc_acm_dev_hdl_t cdc_dev)
 
     return ESP_OK;
 }
+static bool set_config_cb(const usb_device_desc_t *dev_desc, uint8_t *bConfigurationValue)
+{
+    // if (dev_info->dev_desc.idVendor == EXAMPLE_USB_DEVICE_VID && dev_info->dev_desc.idProduct == EXAMPLE_USB_DEVICE_PID)
+    // {
+
+    // If the USB device has more than one configuration, set the second configuration
+    if (dev_desc->bNumConfigurations > 1)
+    {
+        ESP_LOGI(TAG, "USB has %d configurations, setting configuration 2", dev_desc->bNumConfigurations);
+        *bConfigurationValue = 2;
+    }
+    else
+    {
+        ESP_LOGI(TAG, "USB has only one configuration, using default");
+        *bConfigurationValue = 1;
+    }
+
+    // Return true to enumerate the USB device
+    return true;
+    // }
+    // return false;
+}
 
 /**
  * @brief Main application
@@ -298,6 +333,7 @@ void app_main(void)
     const usb_host_config_t host_config = {
         .skip_phy_setup = false,
         .intr_flags = ESP_INTR_FLAG_LEVEL1,
+        .enum_filter_cb = set_config_cb,
     };
     ESP_ERROR_CHECK(usb_host_install(&host_config));
 
@@ -324,8 +360,14 @@ void app_main(void)
         esp_err_t err = cdc_acm_host_open(EXAMPLE_USB_DEVICE_VID, EXAMPLE_USB_DEVICE_PID, 0, &dev_config, &cdc_dev);
         if (ESP_OK != err)
         {
-            ESP_LOGI(TAG, "Failed to open device, retrying...");
+            // ESP_LOGI(TAG, "Opening CDC ACM device 0x%04X:0x%04X...", EXAMPLE_USB_DEVICE_VID, EXAMPLE_USB_DEVICE_PID_2);
+            // esp_err_t err = cdc_acm_host_open(EXAMPLE_USB_DEVICE_VID, EXAMPLE_USB_DEVICE_PID_2, 0, &dev_config, &cdc_dev);
+            // if (ESP_OK != err)
+            // {
+            ESP_LOGE(TAG, "Failed to open device, err: %s", esp_err_to_name(err));
+            vTaskDelay(pdMS_TO_TICKS(1000));
             continue;
+            // }
         }
 
         if (cdc_dev)
@@ -348,8 +390,8 @@ void app_main(void)
         }
 
         // Test sending and receiving: responses are handled in handle_rx callback
-        ESP_ERROR_CHECK(cdc_acm_host_data_tx_blocking(cdc_dev, (const uint8_t *)EXAMPLE_TX_STRING, strlen(EXAMPLE_TX_STRING), EXAMPLE_TX_TIMEOUT_MS));
-        vTaskDelay(pdMS_TO_TICKS(100));
+        // ESP_ERROR_CHECK(cdc_acm_host_data_tx_blocking(cdc_dev, (const uint8_t *)EXAMPLE_TX_STRING, strlen(EXAMPLE_TX_STRING), EXAMPLE_TX_TIMEOUT_MS));
+        // vTaskDelay(pdMS_TO_TICKS(100));
 
         // We are done. Wait for device disconnection and start over
         ESP_LOGI(TAG, "Setup success! Waiting for device to disconnect.");

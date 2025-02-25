@@ -25,7 +25,7 @@ struct cdc_dev_s
     {
         usb_transfer_t *out_xfer;         // OUT data transfer
         usb_transfer_t *in_xfer;          // IN data transfer
-        cdc_acm_data_callback_t in_cb;    // User's callback for async (non-blocking) data IN
+        cdc_ecm_data_callback_t in_cb;    // User's callback for async (non-blocking) data IN
         uint16_t in_mps;                  // IN endpoint Maximum Packet Size
         uint8_t *in_data_buffer_base;     // Pointer to IN data buffer in usb_transfer_t
         const usb_intf_desc_t *intf_desc; // Pointer to data interface descriptor
@@ -36,7 +36,7 @@ struct cdc_dev_s
     {
         usb_transfer_t *xfer;             // IN notification transfer
         const usb_intf_desc_t *intf_desc; // Pointer to notification interface descriptor, can be NULL if there is no notification channel in the device
-        cdc_acm_host_dev_callback_t cb;   // User's callback for device events
+        cdc_ecm_host_dev_callback_t cb;   // User's callback for device events
     } notif;                              // Structure with Notif pipe data
 
     usb_transfer_t *ctrl_transfer;     // CTRL (endpoint 0) transfer

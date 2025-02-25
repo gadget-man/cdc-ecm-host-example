@@ -18,11 +18,11 @@
 #include "esp_system.h"
 
 #include "usb/usb_host.h"
-#include "usb/cdc_acm_host.h"
+#include "cdc_ecm_host.h"
 #include "cdc_host_descriptor_parsing.h"
 #include "cdc_host_types.h"
 
-static const char *TAG = "cdc_acm";
+static const char *TAG = "cdc_ecm";
 
 // Control transfer constants
 #define CDC_ACM_CTRL_TRANSFER_SIZE (64) // All standard CTRL requests and responses fit in this size
@@ -636,7 +636,7 @@ err:
     return ret;
 }
 
-esp_err_t cdc_acm_host_open(uint16_t vid, uint16_t pid, uint8_t interface_idx, const cdc_acm_host_device_config_t *dev_config, cdc_acm_dev_hdl_t *cdc_hdl_ret)
+esp_err_t cdc_acm_host_open(uint16_t vid, uint16_t pid, uint8_t interface_idx, const cdc_acm_host_device_config_t *dev_config, cdc_ecm_dev_hdl_t *cdc_hdl_ret)
 {
     esp_err_t ret;
     CDC_ACM_CHECK(p_cdc_acm_obj, ESP_ERR_INVALID_STATE);
@@ -689,7 +689,7 @@ esp_err_t cdc_acm_host_open(uint16_t vid, uint16_t pid, uint8_t interface_idx, c
         cdc_acm_transfers_allocate(cdc_dev, cdc_info.notif_ep, cdc_info.in_ep, in_buf_size, cdc_info.out_ep, dev_config->out_buffer_size),
         err, TAG, ); // TODO: update buffers based on device configuration values.
     ESP_GOTO_ON_ERROR(cdc_acm_start(cdc_dev, dev_config->event_cb, dev_config->data_cb, dev_config->user_arg), err, TAG, );
-    *cdc_hdl_ret = (cdc_acm_dev_hdl_t)cdc_dev;
+    *cdc_hdl_ret = (cdc_ecm_dev_hdl_t)cdc_dev;
     xSemaphoreGive(p_cdc_acm_obj->open_close_mutex);
     return ESP_OK;
 
@@ -701,7 +701,7 @@ exit:
     return ret;
 }
 
-esp_err_t cdc_acm_host_close(cdc_acm_dev_hdl_t cdc_hdl)
+esp_err_t cdc_acm_host_close(cdc_ecm_dev_hdl_t cdc_hdl)
 {
     CDC_ACM_CHECK(p_cdc_acm_obj, ESP_ERR_INVALID_STATE);
     CDC_ACM_CHECK(cdc_hdl, ESP_ERR_INVALID_ARG);
@@ -760,7 +760,7 @@ esp_err_t cdc_acm_host_close(cdc_acm_dev_hdl_t cdc_hdl)
     return ESP_OK;
 }
 
-void cdc_acm_host_desc_print(cdc_acm_dev_hdl_t cdc_hdl)
+void cdc_acm_host_desc_print(cdc_ecm_dev_hdl_t cdc_hdl)
 {
     assert(cdc_hdl);
     cdc_dev_t *cdc_dev = (cdc_dev_t *)cdc_hdl;
@@ -805,8 +805,8 @@ static bool cdc_acm_is_transfer_completed(usb_transfer_t *transfer)
         // Transfer was not completed or cancelled by user. Inform user about this
         if (cdc_dev->notif.cb)
         {
-            const cdc_acm_host_dev_event_data_t error_event = {
-                .type = CDC_ACM_HOST_ERROR,
+            const cdc_ecm_host_dev_event_data_t error_event = {
+                .type = CDC_ECM_HOST_EVENT_ERROR,
                 .data.error = (int)transfer->status};
             cdc_dev->notif.cb(&error_event, cdc_dev->cb_arg);
         }
@@ -849,13 +849,14 @@ static void in_xfer_cb(usb_transfer_t *transfer)
                 // The IN buffer cannot accept more data, inform the user and reset the buffer
                 ESP_LOGW(TAG, "IN buffer overflow");
                 cdc_dev->serial_state.bOverRun = true;
-                if (cdc_dev->notif.cb)
-                {
-                    const cdc_acm_host_dev_event_data_t serial_state_event = {
-                        .type = CDC_ACM_HOST_SERIAL_STATE,
-                        .data.serial_state = cdc_dev->serial_state};
-                    cdc_dev->notif.cb(&serial_state_event, cdc_dev->cb_arg);
-                }
+                // TODO: work out if we need to do anything with this
+                //  if (cdc_dev->notif.cb)
+                //  {
+                //      const cdc_ecm_host_dev_event_data_t serial_state_event = {
+                //          .type = CDC_ACM_HOST_SERIAL_STATE,
+                //          .data.serial_state = cdc_dev->serial_state};
+                //      cdc_dev->notif.cb(&serial_state_event, cdc_dev->cb_arg);
+                //  }
 
                 cdc_acm_reset_in_transfer(cdc_dev);
                 cdc_dev->serial_state.bOverRun = false;
@@ -890,45 +891,29 @@ static void notif_xfer_cb(usb_transfer_t *transfer)
         {
             if (cdc_dev->notif.cb)
             {
-                const cdc_acm_host_dev_event_data_t net_conn_event = {
-                    .type = CDC_ACM_HOST_NETWORK_CONNECTION,
+                const cdc_ecm_host_dev_event_data_t net_conn_event = {
+                    .type = CDC_ECM_HOST_EVENT_NETWORK_CONNECTION,
                     .data.network_connected = (bool)notif->wValue};
                 cdc_dev->notif.cb(&net_conn_event, cdc_dev->cb_arg);
             }
             break;
         }
-        case USB_CDC_NOTIF_SERIAL_STATE:
+        case USB_CDC_NOTIF_CONNECTION_SPEED_CHANGE:
         {
-            cdc_dev->serial_state.val = *((uint16_t *)notif->Data);
             if (cdc_dev->notif.cb)
             {
-                const cdc_acm_host_dev_event_data_t serial_state_event = {
-                    .type = CDC_ACM_HOST_SERIAL_STATE,
-                    .data.serial_state = cdc_dev->serial_state};
-                cdc_dev->notif.cb(&serial_state_event, cdc_dev->cb_arg);
+                const cdc_ecm_host_dev_event_data_t speed_change_event = {
+                    .type = CDC_ECM_HOST_EVENT_SPEED_CHANGE,
+                    .data.link_speed = notif->wValue};
+                cdc_dev->notif.cb(&speed_change_event, cdc_dev->cb_arg);
             }
             break;
         }
-        case USB_CDC_NOTIF_RESPONSE_AVAILABLE: // Encapsulated commands not implemented - fallthrough
         default:
-            if (notif->bNotificationCode == 0x2A)
-            {
-                cdc_dev->serial_state.val = *((uint16_t *)notif->Data);
-                if (cdc_dev->notif.cb)
-                {
-                    const cdc_acm_host_dev_event_data_t serial_state_event = {
-                        .type = CDC_ACM_HOST_SERIAL_STATE,
-                        .data.serial_state = cdc_dev->serial_state};
-                    cdc_dev->notif.cb(&serial_state_event, cdc_dev->cb_arg);
-                }
-                break;
-            }
-            else
-            {
-                ESP_LOGW(TAG, "Unsupported notification type 0x%02X", notif->bNotificationCode);
-                ESP_LOG_BUFFER_HEX(TAG, transfer->data_buffer, transfer->actual_num_bytes);
-                break;
-            }
+
+            ESP_LOGW(TAG, "Unsupported notification type 0x%02X", notif->bNotificationCode);
+            ESP_LOG_BUFFER_HEX(TAG, transfer->data_buffer, transfer->actual_num_bytes);
+            break;
         }
 
         // Start polling for new data again
@@ -980,9 +965,9 @@ static void usb_event_cb(const usb_host_client_event_msg_t *event_msg, void *arg
             if (cdc_dev->dev_hdl == event_msg->dev_gone.dev_hdl && cdc_dev->notif.cb)
             {
                 // The suddenly disconnected device was opened by this driver: inform user about this
-                const cdc_acm_host_dev_event_data_t disconn_event = {
-                    .type = CDC_ACM_HOST_DEVICE_DISCONNECTED,
-                    .data.cdc_hdl = (cdc_acm_dev_hdl_t)cdc_dev,
+                const cdc_ecm_host_dev_event_data_t disconn_event = {
+                    .type = CDC_ECM_HOST_EVENT_DISCONNECTED,
+                    .data.cdc_hdl = (cdc_ecm_dev_hdl_t)cdc_dev,
                 };
                 cdc_dev->notif.cb(&disconn_event, cdc_dev->cb_arg);
             }
@@ -995,7 +980,7 @@ static void usb_event_cb(const usb_host_client_event_msg_t *event_msg, void *arg
     }
 }
 
-esp_err_t cdc_acm_host_data_tx_blocking(cdc_acm_dev_hdl_t cdc_hdl, const uint8_t *data, size_t data_len, uint32_t timeout_ms)
+esp_err_t cdc_acm_host_data_tx_blocking(cdc_ecm_dev_hdl_t cdc_hdl, const uint8_t *data, size_t data_len, uint32_t timeout_ms)
 {
     esp_err_t ret;
     CDC_ACM_CHECK(cdc_hdl, ESP_ERR_INVALID_ARG);
@@ -1039,7 +1024,7 @@ unblock:
     return ret;
 }
 
-esp_err_t cdc_acm_host_line_coding_get(cdc_acm_dev_hdl_t cdc_hdl, cdc_acm_line_coding_t *line_coding)
+esp_err_t cdc_acm_host_line_coding_get(cdc_ecm_dev_hdl_t cdc_hdl, cdc_acm_line_coding_t *line_coding)
 {
     CDC_ACM_CHECK(line_coding, ESP_ERR_INVALID_ARG);
 
@@ -1051,7 +1036,7 @@ esp_err_t cdc_acm_host_line_coding_get(cdc_acm_dev_hdl_t cdc_hdl, cdc_acm_line_c
     return ESP_OK;
 }
 
-esp_err_t cdc_acm_host_line_coding_set(cdc_acm_dev_hdl_t cdc_hdl, const cdc_acm_line_coding_t *line_coding)
+esp_err_t cdc_acm_host_line_coding_set(cdc_ecm_dev_hdl_t cdc_hdl, const cdc_acm_line_coding_t *line_coding)
 {
     CDC_ACM_CHECK(line_coding, ESP_ERR_INVALID_ARG);
 
@@ -1063,7 +1048,7 @@ esp_err_t cdc_acm_host_line_coding_set(cdc_acm_dev_hdl_t cdc_hdl, const cdc_acm_
     return ESP_OK;
 }
 
-esp_err_t cdc_acm_host_set_control_line_state(cdc_acm_dev_hdl_t cdc_hdl, bool dtr, bool rts)
+esp_err_t cdc_acm_host_set_control_line_state(cdc_ecm_dev_hdl_t cdc_hdl, bool dtr, bool rts)
 {
     const uint16_t ctrl_bitmap = (uint16_t)dtr | ((uint16_t)rts << 1);
 
@@ -1074,7 +1059,7 @@ esp_err_t cdc_acm_host_set_control_line_state(cdc_acm_dev_hdl_t cdc_hdl, bool dt
     return ESP_OK;
 }
 
-esp_err_t cdc_acm_host_send_break(cdc_acm_dev_hdl_t cdc_hdl, uint16_t duration_ms)
+esp_err_t cdc_acm_host_send_break(cdc_ecm_dev_hdl_t cdc_hdl, uint16_t duration_ms)
 {
     ESP_RETURN_ON_ERROR(
         send_cdc_request((cdc_dev_t *)cdc_hdl, false, USB_CDC_REQ_SEND_BREAK, NULL, 0, duration_ms),
@@ -1085,7 +1070,7 @@ esp_err_t cdc_acm_host_send_break(cdc_acm_dev_hdl_t cdc_hdl, uint16_t duration_m
     return ESP_OK;
 }
 
-esp_err_t cdc_acm_host_send_custom_request(cdc_acm_dev_hdl_t cdc_hdl, uint8_t bmRequestType, uint8_t bRequest, uint16_t wValue, uint16_t wIndex, uint16_t wLength, uint8_t *data)
+esp_err_t cdc_acm_host_send_custom_request(cdc_ecm_dev_hdl_t cdc_hdl, uint8_t bmRequestType, uint8_t bRequest, uint16_t wValue, uint16_t wIndex, uint16_t wLength, uint8_t *data)
 {
     CDC_ACM_CHECK(cdc_hdl, ESP_ERR_INVALID_ARG);
     cdc_dev_t *cdc_dev = (cdc_dev_t *)cdc_hdl;
@@ -1161,10 +1146,10 @@ static esp_err_t send_cdc_request(cdc_dev_t *cdc_dev, bool in_transfer, cdc_requ
     {
         req_type |= USB_BM_REQUEST_TYPE_DIR_OUT;
     }
-    return cdc_acm_host_send_custom_request((cdc_acm_dev_hdl_t)cdc_dev, req_type, request, value, cdc_dev->notif.intf_desc->bInterfaceNumber, data_len, data);
+    return cdc_acm_host_send_custom_request((cdc_ecm_dev_hdl_t)cdc_dev, req_type, request, value, cdc_dev->notif.intf_desc->bInterfaceNumber, data_len, data);
 }
 
-esp_err_t cdc_acm_host_protocols_get(cdc_acm_dev_hdl_t cdc_hdl, cdc_comm_protocol_t *comm, cdc_data_protocol_t *data)
+esp_err_t cdc_acm_host_protocols_get(cdc_ecm_dev_hdl_t cdc_hdl, cdc_comm_protocol_t *comm, cdc_data_protocol_t *data)
 {
     CDC_ACM_CHECK(cdc_hdl, ESP_ERR_INVALID_ARG);
     cdc_dev_t *cdc_dev = (cdc_dev_t *)cdc_hdl;
@@ -1180,7 +1165,7 @@ esp_err_t cdc_acm_host_protocols_get(cdc_acm_dev_hdl_t cdc_hdl, cdc_comm_protoco
     return ESP_OK;
 }
 
-esp_err_t cdc_acm_host_cdc_desc_get(cdc_acm_dev_hdl_t cdc_hdl, cdc_desc_subtype_t desc_type, const usb_standard_desc_t **desc_out)
+esp_err_t cdc_acm_host_cdc_desc_get(cdc_ecm_dev_hdl_t cdc_hdl, cdc_desc_subtype_t desc_type, const usb_standard_desc_t **desc_out)
 {
     CDC_ACM_CHECK(cdc_hdl, ESP_ERR_INVALID_ARG);
     CDC_ACM_CHECK(desc_type < USB_CDC_DESC_SUBTYPE_MAX, ESP_ERR_INVALID_ARG);

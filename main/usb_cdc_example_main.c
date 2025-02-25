@@ -24,7 +24,7 @@
 #include "freertos/semphr.h"
 
 #include "usb/usb_host.h"
-#include "usb/cdc_acm_host.h"
+#include "cdc_ecm_host.h"
 
 #define EXAMPLE_USB_HOST_PRIORITY (20)
 #define EXAMPLE_USB_DEVICE_VID (0x0BDA)
@@ -36,7 +36,7 @@
 static const char *TAG = "USB-CDC";
 static SemaphoreHandle_t device_disconnected_sem;
 
-cdc_acm_dev_hdl_t cdc_dev = NULL;
+cdc_ecm_dev_hdl_t cdc_dev = NULL;
 esp_netif_t *usb_netif = NULL;
 
 /**
@@ -64,23 +64,24 @@ static bool handle_rx(const uint8_t *data, size_t data_len, void *arg)
  * @param[in] event    Device event type and data
  * @param[in] user_ctx Argument we passed to the device open function
  */
-static void handle_event(const cdc_acm_host_dev_event_data_t *event, void *user_ctx)
+static void handle_event(const cdc_ecm_host_dev_event_data_t *event, void *user_ctx)
 {
     switch (event->type)
     {
-    case CDC_ACM_HOST_ERROR:
+    case CDC_ECM_HOST_EVENT_ERROR:
         ESP_LOGE(TAG, "CDC-ACM error has occurred, err_no = %i", event->data.error);
         break;
-    case CDC_ACM_HOST_DEVICE_DISCONNECTED:
+    case CDC_ECM_HOST_EVENT_DISCONNECTED:
         ESP_LOGI(TAG, "Device suddenly disconnected");
         ESP_ERROR_CHECK(cdc_acm_host_close(event->data.cdc_hdl));
         xSemaphoreGive(device_disconnected_sem);
         break;
-    case CDC_ACM_HOST_SERIAL_STATE:
-        ESP_LOGI(TAG, "Serial state notif 0x%04X", event->data.serial_state.val);
+    case CDC_ECM_HOST_EVENT_SPEED_CHANGE:
+        ESP_LOGI(TAG, "Link speed changed to %" PRIu32 " bps", event->data.link_speed);
         break;
-    case CDC_ACM_HOST_NETWORK_CONNECTION:
-        ESP_LOGI(TAG, "Serial state notif 0x%04X", event->data.serial_state.val);
+    case CDC_ECM_HOST_EVENT_NETWORK_CONNECTION:
+        ESP_LOGI(TAG, "Network connection state changed: %s", event->data.network_connected ? "Connected" : "Disconnected");
+        // ESP_LOGI(TAG, "Serial state notif 0x%04X", event->data.serial_state.val);
         break;
     default:
         ESP_LOGW(TAG, "Unsupported CDC event: %i", event->type);
@@ -176,8 +177,8 @@ static esp_err_t netif_transmit(void *h, void *buffer, size_t len)
 {
     ESP_LOGI(TAG, "Called netif_transmit with length %d", len);
 
-    cdc_acm_dev_hdl_t cdc_dev = (cdc_acm_dev_hdl_t)h;
-    size_t out_buf_len = 64;
+    cdc_ecm_dev_hdl_t cdc_dev = (cdc_ecm_dev_hdl_t)h;
+    size_t out_buf_len = 512; // TODO: need to link this to buffer limits from config.
 
     if (cdc_dev == NULL)
     {
@@ -215,7 +216,7 @@ static void l2_free(void *h, void *buffer)
  * @brief Netif Initialisation
  *
  */
-esp_err_t usb_ncm_init(cdc_acm_dev_hdl_t cdc_dev)
+esp_err_t usb_ncm_init(cdc_ecm_dev_hdl_t cdc_dev)
 {
     ESP_LOGI(TAG, "Calling usb_ncm_init with handle %p", cdc_dev);
     esp_netif_init();
@@ -360,14 +361,13 @@ void app_main(void)
         esp_err_t err = cdc_acm_host_open(EXAMPLE_USB_DEVICE_VID, EXAMPLE_USB_DEVICE_PID, 0, &dev_config, &cdc_dev);
         if (ESP_OK != err)
         {
-            // ESP_LOGI(TAG, "Opening CDC ACM device 0x%04X:0x%04X...", EXAMPLE_USB_DEVICE_VID, EXAMPLE_USB_DEVICE_PID_2);
-            // esp_err_t err = cdc_acm_host_open(EXAMPLE_USB_DEVICE_VID, EXAMPLE_USB_DEVICE_PID_2, 0, &dev_config, &cdc_dev);
-            // if (ESP_OK != err)
-            // {
-            ESP_LOGE(TAG, "Failed to open device, err: %s", esp_err_to_name(err));
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            continue;
-            // }
+            ESP_LOGI(TAG, "Opening CDC ACM device 0x%04X:0x%04X...", EXAMPLE_USB_DEVICE_VID, EXAMPLE_USB_DEVICE_PID_2);
+            esp_err_t err = cdc_acm_host_open(EXAMPLE_USB_DEVICE_VID, EXAMPLE_USB_DEVICE_PID_2, 0, &dev_config, &cdc_dev);
+            if (ESP_OK != err)
+            {
+                ESP_LOGE(TAG, "Failed to open device, err: %s", esp_err_to_name(err));
+                continue;
+            }
         }
 
         if (cdc_dev)

@@ -10,6 +10,7 @@
 #include "usb/usb_host.h"
 #include "usb_types_cdc.h"
 #include "esp_err.h"
+#include "esp_event.h"
 
 // Pass these to cdc_ecm_host_open() to signal that you don't care about VID/PID of the opened device
 #define CDC_HOST_ANY_VID (0)
@@ -59,10 +60,41 @@ extern "C"
      */
     typedef struct __attribute__((packed))
     {
+        /** Request type. Bits 0:4 determine recipient, see
+         * \ref usb_request_recipient. Bits 5:6 determine type, see
+         * \ref usb_request_type. Bit 7 determines data transfer direction, see
+         * \ref usb_endpoint_direction.
+         */
+        uint8_t bmRequestType;
+
+        /** Request. If the type bits of bmRequestType are equal to
+         * \ref usb_request_type::LIBUSB_REQUEST_TYPE_STANDARD
+         * "USB_REQUEST_TYPE_STANDARD" then this field refers to
+         * \ref usb_standard_request. For other cases, use of this field is
+         * application-specific. */
+        uint8_t bRequest;
+
+        /** Value. Varies according to request */
+        uint16_t wValue;
+
+        /** Index. Varies according to request, typically used to pass an index
+         * or offset */
+        uint16_t wIndex;
+
+        /** Number of bytes to transfer */
+        uint16_t wLength;
+    } cdc_ecm_setup_packet_t;
+
+    /**
+     * @brief CDC-ECM Control Transfer Data
+     * PN COMPLETED
+     *
+     */
+    typedef struct __attribute__((packed))
+    {
         uint32_t downlink_speed; //!< RX speed in bits per second
         uint32_t uplink_speed;   //!< TX speed in bits per second
     } cdc_ecm_speed_change_data_t;
-
     /**
      * @brief New USB device callback
      * PN COMPLETED
@@ -96,6 +128,17 @@ extern "C"
     typedef void (*cdc_ecm_host_dev_callback_t)(const cdc_ecm_host_dev_event_data_t *event, void *user_ctx);
 
     /**
+     * @brief NetIf event callback type
+     * PN COMPLETED
+     *
+     * @param[in] event-base    Event structure
+     * @param[in] event_id      Event ID
+     * @param[in] event_data    Event data
+     */
+    typedef void (*cdc_ecm_event_callback_t)(void *arg, esp_event_base_t event_base,
+                                             int32_t event_id, void *event_data);
+
+    /**
      * @brief Configuration structure of USB Host CDC-ECM driver
      * PN COMPLETED
      *
@@ -122,6 +165,33 @@ extern "C"
         cdc_ecm_data_callback_t data_cb;      /**< Device's data RX callback function. Can be NULL for write-only devices */
         void *user_arg;                       /**< User's argument that will be passed to the callbacks */
     } cdc_ecm_host_device_config_t;
+
+    /**
+     * @brief Parameters structure of cdc_ecm_init()
+     * PN COMPLETED
+     *
+     */
+
+    typedef struct
+    {
+        uint16_t vid;                      //!< Device's Vendor ID
+        uint16_t pids[2];                  //!< Device's Product ID(s)
+        cdc_ecm_event_callback_t event_cb; //!< Event callback function for IP and ETH events
+        void *callback_arg;                //!< User's argument passed to the event callback
+        char *hostname;                    //!< Hostname for the device
+        char *if_key;                      //!< Interface key for the device
+        char *if_desc;                     //!< Interface description for the device
+    } cdc_ecm_params_t;
+
+    /**
+     * @brief Initialise CDC-ECM process
+     * PN COMPLETED
+     *
+     *
+     * @param[in] cdc_ecm_params    Parameters structure for CDC-ECM process
+     * @return
+     */
+    void cdc_ecm_init(cdc_ecm_params_t *cdc_ecm_params);
 
     /**
      * @brief Install CDC-ECM driver
@@ -187,6 +257,31 @@ extern "C"
     esp_err_t cdc_ecm_host_open(uint16_t vid, uint16_t pid, uint8_t interface_idx, const cdc_ecm_host_device_config_t *dev_config, cdc_ecm_dev_hdl_t *cdc_hdl_ret);
 
     /**
+     * @brief Retrieve MAC address from cdc_hdl
+     * PN COMPLETED
+     *
+     * Return to on transfer completed OK.
+     * Cancel the transfer and issue user's callback in case of an error.
+     *
+     * @param cdc_hdl CDC device handle
+     * @param[in] mac_addr MAC address buffer
+     * @return true Transfer completed
+     * @return false Transfer NOT completed
+     */
+    esp_err_t cdc_ecm_get_mac_addr(cdc_ecm_dev_hdl_t cdc_hdl, uint8_t *mac_addr);
+
+    /**
+     * @brief Retrieve connection status  from cdc_hdl
+     * PN COMPLETED
+     *
+     *
+     * @param cdc_hdl CDC device handle
+     * @return true Device is connected
+     * @return false Devics is NOT completed
+     */
+    bool cdc_ecm_get_connection_status(cdc_ecm_dev_hdl_t cdc_hdl);
+
+    /**
      * @brief Close CDC device and release its resources
      * PN COMPLETED
      *
@@ -211,6 +306,16 @@ extern "C"
     esp_err_t cdc_ecm_host_data_tx_blocking(cdc_ecm_dev_hdl_t cdc_hdl, const uint8_t *data, size_t data_len, uint32_t timeout_ms);
 
     /**
+     * @brief SetInterface function
+     *
+     * @see Table 9-4 of USB 2.0 specification
+     *
+     * @param     cdc_hdl     CDC handle obtained from cdc_acm_host_open()
+     * @return esp_err_t
+     */
+    esp_err_t cdc_ecm_set_interface(cdc_ecm_dev_hdl_t cdc_hdl);
+
+    /**
      * @brief SetPacketFilter function
      *
      * @see Section 6.2.4 of the CDC-ECM Specification (Rev 1.2)
@@ -219,7 +324,30 @@ extern "C"
      * @param[in] filter_mas  Packet Filter Mask
      * @return esp_err_t
      */
-    esp_err_t cdc_ecm_packet_filter_set(cdc_ecm_dev_hdl_t cdc_hdl, uint16_t filter_mask);
+    esp_err_t cdc_ecm_set_packet_filter(cdc_ecm_dev_hdl_t cdc_hdl, uint16_t filter_mask);
+
+    /**
+     * @brief SetMulticastFilter function - allows host use device mac address in netif
+     *
+     *
+     * @param     cdc_hdl     CDC handle obtained from cdc_acm_host_open()
+     * @param[in] mac  Device mac address
+     * @return esp_err_t
+     */
+    esp_err_t cdc_ecm_set_multicast_filter(cdc_ecm_dev_hdl_t cdc_hdl, uint8_t *mac);
+
+    /**
+     * @brief Get String Descriptor function
+     *
+     * @see Section 6.2.4 of the CDC-ECM Specification (Rev 1.2)
+     *
+     * @param     cdc_hdl           CDC handle obtained from cdc_acm_host_open()
+     * @param[in] uint16_t index    Index of the string descriptor
+     * @param[out] uint8_t *output  Output buffer
+     *
+     * @return esp_err_t
+     */
+    esp_err_t cdc_ecm_get_string_desc(cdc_ecm_dev_hdl_t cdc_hdl, uint16_t index, uint8_t *output);
 
     /**
      * @brief Print device's descriptors
@@ -230,19 +358,6 @@ extern "C"
      * @param cdc_hdl CDC handle obtained from cdc_ecm_host_open()
      */
     void cdc_ecm_host_desc_print(cdc_ecm_dev_hdl_t cdc_hdl);
-
-    /**
-     * @brief Get protocols defined in USB-CDC interface descriptors
-     * PN COMPLETED
-     *
-     * @param cdc_hdl   CDC handle obtained from cdc_ecm_host_open()
-     * @param[out] comm Communication protocol
-     * @param[out] data Data protocol
-     * @return
-     *   - ESP_OK: Success
-     *   - ESP_ERR_INVALID_ARG: Invalid device
-     */
-    esp_err_t cdc_ecm_host_protocols_get(cdc_ecm_dev_hdl_t cdc_hdl, cdc_comm_protocol_t *comm, cdc_data_protocol_t *data);
 
     /**
      * @brief Get CDC functional descriptor
@@ -318,9 +433,14 @@ public:
         return err;
     }
 
-    virtual inline esp_err_t packet_filter_set(uint32_t filter_mask)
+    virtual inline esp_err_t set_interface()
     {
-        return cdc_ecm_packet_filter_set(this->cdc_hdl, filter_mask);
+        return cdc_ecm_set_interface(this->cdc_hdl);
+    }
+
+    virtual inline esp_err_t set_packet_filter(uint32_t filter_mask)
+    {
+        return cdc_ecm_set_packet_filter(this->cdc_hdl, filter_mask);
     }
 
     inline esp_err_t send_custom_request(uint8_t bmRequestType, uint8_t bRequest, uint16_t wValue, uint16_t wIndex, uint16_t wLength, uint8_t *data)

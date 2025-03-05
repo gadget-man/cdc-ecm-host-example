@@ -230,6 +230,17 @@ void cdc_print_desc(const usb_standard_desc_t *_desc)
         printf("\tbDataInterface: %d\n", desc->bDataInterface);
         break;
     }
+    case USB_CDC_DESC_SUBTYPE_ETH:
+    {
+        cdc_ecm_eth_desc_t *desc = (cdc_ecm_eth_desc_t *)_desc;
+        printf("\t*** CDC Ethernet Descriptor ***\n");
+        printf("\tiMacAddress: %d\n", desc->iMACAddress);
+        printf("\tbmEthernetStatistics: %ld\n", desc->bmEthernetStatistics);
+        printf("\twMaxSegmentSize: %d\n", desc->wMaxSegmentSize);
+        printf("\twNumberMCFilters: %d\n", desc->wNumberMCFilters);
+        printf("\tbNumberPowerFilters: %d\n", desc->bNumberPowerFilters);
+        break;
+    }
     case USB_CDC_DESC_SUBTYPE_ACM:
     {
         cdc_acm_acm_desc_t *desc = (cdc_acm_acm_desc_t *)_desc;

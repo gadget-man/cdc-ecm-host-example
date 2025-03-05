@@ -8,11 +8,36 @@
 #include <inttypes.h>
 
 /**
+ * @brief USB CDC Descriptor Types
+ *
+ * @see Table 13, USB CDC specification rev. 1.2
+ */
+typedef enum
+{
+    USB_DESCRIPTOR_TYPE_DEVICE = 0x01U,
+    USB_DESCRIPTOR_TYPE_CONFIGURATION = 0x02U,
+    USB_DESCRIPTOR_TYPE_STRING = 0x03U,
+    USB_DESCRIPTOR_TYPE_INTERFACE = 0x04U,
+    USB_DESCRIPTOR_TYPE_ENDPOINT = 0x05U,
+    USB_DESCRIPTOR_TYPE_DEVICE_QUALIFIER = 0x06U,
+    USB_DESCRIPTOR_TYPE_OTHER_SPEED = 0x07U,
+    USB_DESCRIPTOR_TYPE_INTERFACE_POWER = 0x08U,
+    USB_DESCRIPTOR_TYPE_OTG = 0x09U,
+    USB_DESCRIPTOR_TYPE_DEBUG = 0x0AU,
+    USB_DESCRIPTOR_TYPE_INTERFACE_ASSOCIATION = 0x0BU,
+    USB_DESCRIPTOR_TYPE_BINARY_OBJECT_STORE = 0x0FU,
+    USB_DESCRIPTOR_TYPE_DEVICE_CAPABILITY = 0x10U,
+    USB_DESCRIPTOR_TYPE_WIRELESS_ENDPOINTCOMP = 0x11U,
+
+} __attribute__((packed)) cdc_desc_type_t;
+
+/**
  * @brief USB CDC Descriptor Subtypes
  *
  * @see Table 13, USB CDC specification rev. 1.2
  */
-typedef enum {
+typedef enum
+{
     USB_CDC_DESC_SUBTYPE_HEADER = 0x00,             // Header Functional Descriptor
     USB_CDC_DESC_SUBTYPE_CALL = 0x01,               // Call Management Functional Descriptor
     USB_CDC_DESC_SUBTYPE_ACM = 0x02,                // Abstract Control Management Functional Descriptor
@@ -48,7 +73,8 @@ typedef enum {
  *
  * @see Table 4, USB CDC specification rev. 1.2
  */
-typedef enum {
+typedef enum
+{
     USB_CDC_SUBCLASS_DLCM = 0x01,    // Direct Line Control Model
     USB_CDC_SUBCLASS_ACM = 0x02,     // Abstract Control Model
     USB_CDC_SUBCLASS_TCM = 0x03,     // Telephone Control Model
@@ -69,7 +95,8 @@ typedef enum {
  *
  * @see Table 5, USB CDC specification rev. 1.2
  */
-typedef enum {
+typedef enum
+{
     USB_CDC_COMM_PROTOCOL_NONE = 0x00,   // No class specific protocol required
     USB_CDC_COMM_PROTOCOL_V250 = 0x01,   // AT Commands: V.250 etc
     USB_CDC_COMM_PROTOCOL_PCAA = 0x02,   // AT Commands defined by PCCA-101
@@ -87,13 +114,14 @@ typedef enum {
  *
  * @see Table 7, USB CDC specification rev. 1.2
  */
-typedef enum {
+typedef enum
+{
     USB_CDC_DATA_PROTOCOL_NONE = 0x00,   // No class specific protocol required
     USB_CDC_DATA_PROTOCOL_NCM = 0x01,    // Network Transfer Block
     USB_CDC_DATA_PROTOCOL_I430 = 0x30,   // Physical interface protocol for ISDN BRI
     USB_CDC_DATA_PROTOCOL_HDLC = 0x31,   // HDLC
     USB_CDC_DATA_PROTOCOL_Q921M = 0x50,  // Management protocol for Q.921 data link protocol
-    USB_CDC_DATA_PROTOCOL_Q921  = 0x51,  // Data link protocol for Q.931
+    USB_CDC_DATA_PROTOCOL_Q921 = 0x51,   // Data link protocol for Q.931
     USB_CDC_DATA_PROTOCOL_Q921TM = 0x52, // TEI-multiplexor for Q.921 data link protocol
     USB_CDC_DATA_PROTOCOL_V42BIS = 0x90, // Data compression procedures
     USB_CDC_DATA_PROTOCOL_Q931 = 0x91,   // Euro-ISDN protocol control
@@ -107,12 +135,15 @@ typedef enum {
  *
  * @see Table 19, USB CDC specification rev. 1.2
  */
-typedef enum {
+typedef enum
+{
     USB_CDC_REQ_SEND_ENCAPSULATED_COMMAND = 0x00,
     USB_CDC_REQ_GET_ENCAPSULATED_RESPONSE = 0x01,
     USB_CDC_REQ_SET_COMM_FEATURE = 0x02,
     USB_CDC_REQ_GET_COMM_FEATURE = 0x03,
     USB_CDC_REQ_CLEAR_COMM_FEATURE = 0x04,
+    USB_CDC_REQ_GET_DESCRIPTOR = 0x06,
+    USB_CDC_REQ_SET_DESCRIPTOR = 0x07,
     USB_CDC_REQ_SET_AUX_LINE_STATE = 0x10,
     USB_CDC_REQ_SET_HOOK_STATE = 0x11,
     USB_CDC_REQ_PULSE_SETUP = 0x12,
@@ -161,7 +192,8 @@ typedef enum {
  *
  * @see Table 20, USB CDC specification rev. 1.2
  */
-typedef enum {
+typedef enum
+{
     USB_CDC_NOTIF_NETWORK_CONNECTION = 0x00,
     USB_CDC_NOTIF_RESPONSE_AVAILABLE = 0x01,
     USB_CDC_NOTIF_AUX_JACK_HOOK_STATE = 0x08,
@@ -172,7 +204,8 @@ typedef enum {
     USB_CDC_NOTIF_CONNECTION_SPEED_CHANGE = 0x2A
 } __attribute__((packed)) cdc_notification_code_t;
 
-typedef struct {
+typedef struct
+{
     uint8_t bmRequestType;
     cdc_notification_code_t bNotificationCode;
     uint16_t wValue;
@@ -186,7 +219,8 @@ typedef struct {
  *
  * @see Table 15, USB CDC specification rev. 1.2
  */
-typedef struct {
+typedef struct
+{
     uint8_t bFunctionLength;
     const uint8_t bDescriptorType; // Upper nibble: CDC code 0x02, Lower nibble: intf/ep descriptor type 0x04/0x05
     const cdc_desc_subtype_t bDescriptorSubtype;
@@ -198,7 +232,8 @@ typedef struct {
  *
  * @see Table 16, USB CDC specification rev. 1.2
  */
-typedef struct {
+typedef struct
+{
     uint8_t bFunctionLength;
     const uint8_t bDescriptorType; // Upper nibble: CDC code 0x02, Lower nibble: intf/ep descriptor type 0x04/0x05
     const cdc_desc_subtype_t bDescriptorSubtype;
@@ -207,19 +242,38 @@ typedef struct {
 } __attribute__((packed)) cdc_union_desc_t;
 
 /**
+ * @brief USB CDC Ethernet Functional Descriptor
+ *
+ * @see Table 16, USB CDC specification rev. 1.2
+ */
+typedef struct
+{
+    uint8_t bFunctionLength;
+    uint8_t bDescriptorType;
+    uint8_t bDescriptorSubtype;
+    uint8_t iMACAddress;
+    uint32_t bmEthernetStatistics;
+    uint16_t wMaxSegmentSize;
+    uint16_t wNumberMCFilters;
+    uint8_t bNumberPowerFilters;
+} __attribute__((packed)) cdc_ecm_eth_desc_t;
+/**
  * @brief USB CDC PSTN Call Descriptor
  *
  * @see Table 3, USB CDC-PSTN specification rev. 1.2
  */
-typedef struct {
+typedef struct
+{
     uint8_t bFunctionLength;
     const uint8_t bDescriptorType;
     const cdc_desc_subtype_t bDescriptorSubtype;
-    union {
-        struct {
-            uint8_t call_management:   1; // Device handles call management itself
-            uint8_t call_over_data_if: 1; // Device sends/receives call management information over Data Class interface
-            uint8_t reserved: 6;
+    union
+    {
+        struct
+        {
+            uint8_t call_management : 1;   // Device handles call management itself
+            uint8_t call_over_data_if : 1; // Device sends/receives call management information over Data Class interface
+            uint8_t reserved : 6;
         };
         uint8_t val;
     } bmCapabilities;
@@ -231,17 +285,20 @@ typedef struct {
  *
  * @see Table 4, USB CDC-PSTN specification rev. 1.2
  */
-typedef struct {
+typedef struct
+{
     uint8_t bFunctionLength;
     const uint8_t bDescriptorType;
     const cdc_desc_subtype_t bDescriptorSubtype;
-    union {
-        struct {
-            uint8_t feature:    1; // Device supports Set/Clear/Get_Comm_Feature requests
-            uint8_t serial:     1; // Device supports Set/Get_Line_Coding, Set_Control_Line_State and Serial_State request and notifications
-            uint8_t send_break: 1; // Device supports Send_Break request
-            uint8_t network:    1; // Device supports Network_Connection notification
-            uint8_t reserved:   4;
+    union
+    {
+        struct
+        {
+            uint8_t feature : 1;    // Device supports Set/Clear/Get_Comm_Feature requests
+            uint8_t serial : 1;     // Device supports Set/Get_Line_Coding, Set_Control_Line_State and Serial_State request and notifications
+            uint8_t send_break : 1; // Device supports Send_Break request
+            uint8_t network : 1;    // Device supports Network_Connection notification
+            uint8_t reserved : 4;
         };
         uint8_t val;
     } bmCapabilities;
@@ -251,7 +308,8 @@ typedef struct {
  * @brief Line Coding structure
  * @see Table 17, USB CDC-PSTN specification rev. 1.2
  */
-typedef struct {
+typedef struct
+{
     uint32_t dwDTERate;  // in bits per second
     uint8_t bCharFormat; // 0: 1 stopbit, 1: 1.5 stopbits, 2: 2 stopbits
     uint8_t bParityType; // 0: None, 1: Odd, 2: Even, 3: Mark, 4: Space
@@ -262,8 +320,10 @@ typedef struct {
  * @brief UART State Bitmap
  * @see Table 31, USB CDC-PSTN specification rev. 1.2
  */
-typedef union {
-    struct {
+typedef union
+{
+    struct
+    {
         uint16_t bRxCarrier : 1;  // State of receiver carrier detection mechanism of device. This signal corresponds to V.24 signal 109 and RS-232 signal DCD.
         uint16_t bTxCarrier : 1;  // State of transmission carrier. This signal corresponds to V.24 signal 106 and RS-232 signal DSR.
         uint16_t bBreak : 1;      // State of break detection mechanism of the device.

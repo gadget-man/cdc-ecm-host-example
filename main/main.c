@@ -1,5 +1,6 @@
 /*
  * SPDX-FileCopyrightText: 2015-2023 Espressif Systems (Shanghai) CO LTD
+ * Modified from original Espressif cdc-acm example by Paul Needler (gadget-man)
  *
  * SPDX-License-Identifier: CC0-1.0
  */

@@ -27,6 +27,8 @@ idf.py -p PORT flash monitor
 
 See the Getting Started Guide for full steps to configure and use ESP-IDF to build projects.
 
+IMPORTANT: Many of the most common usb-to-ethernet dongle adapters provide both a vendor-specific and cdc-ecm driver. This library only uses the cdc-ecm driver. In order to access this, it is important to enable alternative configurations within your sdconfig, by enabling `CONFIG_USB_HOST_ENABLE_ENUM_FILTER_CALLBACK=y`.
+
 ## Example Output
 
 After the flashing, plug in a usb-to-ethernet adapter connected by ethernet cable to your network. You should see the output at idf monitor:

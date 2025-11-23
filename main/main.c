@@ -100,6 +100,10 @@ static cdc_ecm_params_t cdc_ecm_params = {
  */
 void app_main(void)
 {
+
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+
     esp_log_level_set("*", ESP_LOG_INFO);
     esp_log_level_set("USB-CDC", ESP_LOG_DEBUG);
     // esp_log_level_set("cdc_ecm", ESP_LOG_DEBUG);

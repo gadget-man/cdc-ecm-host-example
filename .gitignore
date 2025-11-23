@@ -1,3 +1,6 @@
 build.nosync
+build
+managed_components
 .vscode
 sdkconfig.old
+dependencies.lock

@@ -1,5 +1,5 @@
 ## IDF Component Manager Manifest File
 dependencies:
-  cdc_ecm_host:
+  usb_host_cdc_ecm:
     git: https://github.com/gadget-man/usb_host_cdc_ecm
     path: .
